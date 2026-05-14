@@ -1,0 +1,17 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: uc00602_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: #PASSWORD
+      MYSQL_DATABASE: threat_intel
+      MYSQL_USER: admin_intel
+      MYSQL_PASSWORD: #PASSWORD
+    ports:
+      - "3307:3307"
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:
