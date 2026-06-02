@@ -1,0 +1,5 @@
+requests
+python-dotenv
+colorama
+tabulate
+mysql-connector-python
