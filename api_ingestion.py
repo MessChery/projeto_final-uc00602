@@ -1,4 +1,5 @@
 import requests
+from urllib.parse import urlparse
 
 from config import (
     ALIENVAULT_API_KEY,
@@ -60,6 +61,12 @@ def fetch_otx():
 
     ips = []
 
+    phishing_tags = {
+        "phishing",
+        "vishing",
+        "smishing"
+    }
+
     for pulse in data["results"]:
 
         tags = [
@@ -67,14 +74,39 @@ def fetch_otx():
             for tag in pulse.get("tags", [])
         ]
 
-        if "phishing" not in tags:
+        if not any(
+                tag in phishing_tags
+                for tag in tags
+        ):
             continue
 
         for indicator in pulse.get("indicators", []):
 
-            if indicator.get("type") == "IPv4":
-                ips.append(
-                    indicator.get("indicator")
+            indicator_type = (
+                indicator.get("type", "")
+                .lower()
+            )
+
+            indicator_value = (
+                indicator.get("indicator", "")
+            )
+
+            if indicator_type in (
+                    "ipv4",
+                    "ipv6"
+            ):
+
+                ips.append(indicator_value)
+
+            elif indicator_type == "url":
+
+                parsed = urlparse(
+                    indicator_value
                 )
+
+                host = parsed.hostname
+
+                if host:
+                    ips.append(host)
 
     return ips
