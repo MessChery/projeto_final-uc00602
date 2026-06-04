@@ -1,340 +1,396 @@
-# gui_app.py
-# =============================================================================
-# Threat Intelligence Dashboard — Desktop GUI
-# =============================================================================
-# This file builds a graphical user interface (GUI) for the Phishing &
-# Threat Intelligence Engine using Python's built-in tkinter library.
-#
-# It connects to the two backend modules already in this folder:
-#   - db_queries.py  → get_threat_history(ip) : fetches threat records from DB
-#   - risk_engine.py → calculate_risk(history) : returns an integer 0-100
-#                      get_risk_label(score)   : returns a readable string
-#
-# HOW TO RUN:
-#   python gui_app.py
-#   (Make sure your MySQL database is running first so DB calls succeed)
-# =============================================================================
 
-import tkinter as tk            
-from tkinter import messagebox
+import tkinter as tk
+from tkinter import ttk
 import sys
 import os
+import re
+import socket
 
-# Build the absolute path to the database/ folder relative to this file
 _DATABASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database")
-
-# Insert it at position 0 so it is searched first
 if _DATABASE_DIR not in sys.path:
     sys.path.insert(0, _DATABASE_DIR)
 
-# Now we can import the backend modules by their plain names (no package prefix)
-import db_queries   
+import db_queries
 import risk_engine
 
 
-# =============================================================================
-# COLOR MAPPING FOR RISK LABELS
-# =============================================================================
-# This dictionary maps each possible risk label (returned by get_risk_label)
-# to the colour that should be displayed in the result area.
-# Using a dict here keeps all colour decisions in one easy-to-read place.
-# =============================================================================
+BG_ROOT      = "#0f0f1a"
+BG_HEADER    = "#16162a"
+BG_ENTRY     = "#1c1c35"
+BG_RESULT    = "#13132a"
+BG_SEPARATOR = "#2a2a50"
+
+ACCENT_RED     = "#e94560"
+ACCENT_RED_HOV = "#bf3a52"
+ACCENT_CLEAR   = "#252545"
+ACCENT_CLEAR_H = "#363660"
+
+SB_TROUGH  = "#1a1a30"
+SB_THUMB   = "#3a3a60"
+SB_THUMB_H = "#5050a0"
+
+TEXT_PRIMARY = "#e8e8f0"
+TEXT_MUTED   = "#7a7a9a"
+TEXT_ACCENT  = "#a0a0cc"
+TEXT_ERROR   = "#ff6b6b"
+TEXT_SAFE    = "#2ecc71"
+CURSOR_CLR   = "#e94560"
+
+BORDER_RESULT = "#2a2a50"
+
+FONT_TITLE    = ("Arial", 17, "bold")
+FONT_SUBTITLE = ("Arial", 10, "italic")
+FONT_LABEL_B  = ("Arial", 11, "bold")
+FONT_ENTRY    = ("Courier", 11)
+FONT_BTN      = ("Arial", 11, "bold")
+FONT_SECTION  = ("Arial", 10, "bold")
+FONT_RESULT   = ("Courier", 12)
+FONT_FOOTER   = ("Arial", 8)
+
+WIN_W, WIN_H = 620, 510
+
+
 LABEL_COLORS = {
-    "No Risk":       "#27ae60",   # Green  — safe, nothing to worry about
-    "Low Risk":      "#2ecc71",   # Light green — low concern
-    "Medium Risk":   "#e67e22",   # Orange — moderate concern
-    "High Risk":     "#e74c3c",   # Red    — serious threat
-    "Critical Risk": "#c0392b",   # Dark red — maximum danger
+    "No Risk":       "#27ae60",
+    "Low Risk":      "#2ecc71",
+    "Medium Risk":   "#e67e22",
+    "High Risk":     "#e74c3c",
+    "Critical Risk": "#c0392b",
 }
 
-# Fallback colour when the label is unrecognised (should not normally happen)
-DEFAULT_COLOR = "#ecf0f1"
+LABEL_TAGS = {
+    "No Risk":       "no_risk",
+    "Low Risk":      "low_risk",
+    "Medium Risk":   "medium_risk",
+    "High Risk":     "high_risk",
+    "Critical Risk": "critical_risk",
+}
 
 
-# =============================================================================
-# FUNCTION: analyze_ip
-# =============================================================================
-# Purpose:
-#   This is the main "action" function — it is called every time the user
-#   clicks the "Analyze Threat" button.
-#
-# Steps it performs:
-#   1. Read the IP address the user typed in the Entry widget.
-#   2. Basic validation: warn the user if the field is empty.
-#   3. Call db_queries.get_threat_history(ip) to query the database.
-#   4a. If NO records come back → show a "safe" message in green.
-#   4b. If records ARE found   → calculate the risk score and label,
-#       then display a formatted report with the correct colour.
-#
-# Parameters:
-#   ip_entry   (tk.Entry)  - The Entry widget containing the user's IP text
-#   result_var (tk.StringVar) - The StringVar linked to the result Label
-#   result_lbl (tk.Label)  - The Label widget that shows the result text
-# =============================================================================
-def analyze_ip(ip_entry, result_var, result_lbl):
+_IPV4_RE = re.compile(
+    r"^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}"
+    r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$"
+)
 
-    # -----------------------------------------------------------------------
-    # STEP 1 — Read and clean the IP address from the Entry widget
-    # .strip() removes any accidental leading/trailing spaces the user may have
-    # typed (e.g. "  192.168.1.1  " becomes "192.168.1.1")
-    # -----------------------------------------------------------------------
+
+def is_valid_ipv4(text: str) -> bool:
+    """Return True only if *text* is a syntactically valid IPv4 address."""
+    return bool(_IPV4_RE.match(text))
+
+
+def resolve_hostname(ip: str) -> str:
+    """
+    Attempt a reverse DNS (PTR) lookup via socket.gethostbyaddr().
+    Returns the hostname on success, or "N/A (No PTR record)" on any failure.
+    Catching socket.herror and socket.gaierror covers the vast majority of
+    DNS failures (no record, network error, timeout).
+    """
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip)
+        return hostname
+    except (socket.herror, socket.gaierror):
+        return "N/A (No PTR record)"
+    except Exception:
+        return "N/A (No PTR record)"
+
+
+def setup_styles() -> None:
+
+    style = ttk.Style()
+    style.theme_use("clam")
+
+    style.configure(
+        "Analyze.TButton",
+        font=FONT_BTN,
+        background=ACCENT_RED,
+        foreground="#ffffff",
+        relief="flat",
+        borderwidth=0,
+        bordercolor=ACCENT_RED,
+        lightcolor=ACCENT_RED,
+        darkcolor=ACCENT_RED,
+        focusthickness=0,
+        focuscolor=ACCENT_RED,
+        padding=(16, 8),
+        anchor="center",
+    )
+    style.map(
+        "Analyze.TButton",
+        background=[("pressed", ACCENT_RED_HOV), ("active", ACCENT_RED_HOV)],
+        bordercolor=[("pressed", ACCENT_RED_HOV), ("active", ACCENT_RED_HOV)],
+        lightcolor=[("pressed", ACCENT_RED_HOV), ("active", ACCENT_RED_HOV)],
+        darkcolor=[("pressed", ACCENT_RED_HOV),  ("active", ACCENT_RED_HOV)],
+        foreground=[("pressed", "#ffffff"),       ("active", "#ffffff")],
+        relief=[("pressed", "flat"),              ("active", "flat")],
+    )
+
+    style.configure(
+        "Clear.TButton",
+        font=FONT_BTN,
+        background=ACCENT_CLEAR,
+        foreground=TEXT_ACCENT,
+        relief="flat",
+        borderwidth=0,
+        bordercolor=ACCENT_CLEAR,
+        lightcolor=ACCENT_CLEAR,
+        darkcolor=ACCENT_CLEAR,
+        focusthickness=0,
+        focuscolor=ACCENT_CLEAR,
+        padding=(16, 8),
+        anchor="center",
+    )
+    style.map(
+        "Clear.TButton",
+        background=[("pressed", ACCENT_CLEAR_H), ("active", ACCENT_CLEAR_H)],
+        bordercolor=[("pressed", ACCENT_CLEAR_H), ("active", ACCENT_CLEAR_H)],
+        lightcolor=[("pressed", ACCENT_CLEAR_H),  ("active", ACCENT_CLEAR_H)],
+        darkcolor=[("pressed", ACCENT_CLEAR_H),   ("active", ACCENT_CLEAR_H)],
+        foreground=[("pressed", TEXT_PRIMARY),    ("active", TEXT_PRIMARY)],
+        relief=[("pressed", "flat"),              ("active", "flat")],
+    )
+
+    style.configure(
+        "Dark.Vertical.TScrollbar",
+        troughcolor=SB_TROUGH,
+        background=SB_THUMB,
+        arrowcolor=TEXT_MUTED,
+        bordercolor=BG_RESULT,
+        lightcolor=SB_THUMB,
+        darkcolor=SB_THUMB,
+        relief="flat",
+        borderwidth=0,
+        arrowsize=12,
+    )
+    style.map(
+        "Dark.Vertical.TScrollbar",
+        background=[("pressed", SB_THUMB_H), ("active", SB_THUMB_H)],
+        lightcolor=[("pressed", SB_THUMB_H), ("active", SB_THUMB_H)],
+        darkcolor=[("pressed", SB_THUMB_H),  ("active", SB_THUMB_H)],
+    )
+
+
+def configure_tags(text_widget: tk.Text) -> None:
+    text_widget.tag_config("muted",        foreground=TEXT_MUTED)
+    text_widget.tag_config("error",        foreground=TEXT_ERROR)
+    text_widget.tag_config("safe",         foreground=TEXT_SAFE)
+    text_widget.tag_config("no_risk",      foreground=LABEL_COLORS["No Risk"])
+    text_widget.tag_config("low_risk",     foreground=LABEL_COLORS["Low Risk"])
+    text_widget.tag_config("medium_risk",  foreground=LABEL_COLORS["Medium Risk"])
+    text_widget.tag_config("high_risk",    foreground=LABEL_COLORS["High Risk"])
+    text_widget.tag_config("critical_risk", foreground=LABEL_COLORS["Critical Risk"])
+
+
+def write_result(text_widget: tk.Text, content: str, tag: str) -> None:
+    text_widget.config(state=tk.NORMAL)
+    text_widget.delete("1.0", tk.END)
+    text_widget.insert("1.0", content, tag)
+    text_widget.config(state=tk.DISABLED)
+
+
+def analyze_ip(ip_entry: tk.Entry, result_text: tk.Text) -> None:
+
     ip = ip_entry.get().strip()
 
-    # -----------------------------------------------------------------------
-    # STEP 2 — Validate input: do not proceed with an empty field
-    # messagebox.showwarning() displays a small pop-up window with a warning
-    # -----------------------------------------------------------------------
-    if not ip:
-        messagebox.showwarning(
-            title="Input Required",
-            message="Please enter an IP address before clicking Analyze."
+    if not ip or not is_valid_ipv4(ip):
+        write_result(
+            result_text,
+            "⚠   Invalid Input\n\n"
+            "Please enter a valid IPv4 address.\n"
+            "Example:  192.168.1.1",
+            "error",
         )
-        return  # Exit the function early — nothing more to do
+        return
 
-    # -----------------------------------------------------------------------
-    # STEP 3 — Query the database for threat history of this IP
-    # get_threat_history() returns a list of dicts, or an empty list []
-    # -----------------------------------------------------------------------
-    history = db_queries.get_threat_history(ip)  # plain name — resolved via sys.path
+    domain = resolve_hostname(ip)
 
-    # -----------------------------------------------------------------------
-    # STEP 4A — No records found: IP appears safe
-    # Display a reassuring green message to the user
-    # -----------------------------------------------------------------------
+    history = db_queries.get_threat_history(ip)
+
     if not history:
-        result_var.set(
-            f"✅  Target IP: {ip}\n\n"
+        write_result(
+            result_text,
+            f"✅  Target IP      :  {ip}\n"
+            f"🌐  Resolved Domain:  {domain}\n\n"
             "No threats found in database.\n"
-            "IP appears safe."
+            "This IP appears safe.",
+            "safe",
         )
-        result_lbl.config(fg="#27ae60")   # Green text for "safe" feedback
-        return  # Done — nothing more to calculate
+        return
 
-    # -----------------------------------------------------------------------
-    # STEP 4B — Records found: calculate the risk score and display the report
-    # -----------------------------------------------------------------------
+    score = risk_engine.calculate_risk(history)
+    label = risk_engine.get_risk_label(score)
+    tag   = LABEL_TAGS.get(label, "muted")
 
-    # Ask risk_engine to score the history (returns an int 0-100)
-    score = risk_engine.calculate_risk(history)  # plain name — resolved via sys.path
-
-    # Convert the numeric score to a human-readable label (e.g. "High Risk")
-    label = risk_engine.get_risk_label(score)    # plain name — resolved via sys.path
-
-    # Look up the colour for this label, defaulting to white if not found
-    color = LABEL_COLORS.get(label, DEFAULT_COLOR)
-
-    # Build the multi-line report text that will appear in the result area
-    report = (
-        f"🔍  Target IP:       {ip}\n\n"
-        f"📊  Risk Score:      {score} / 100\n\n"
-        f"🏷️   Classification:  {label}"
+    write_result(
+        result_text,
+        f"🔍  Target IP      :  {ip}\n"
+        f"🌐  Resolved Domain:  {domain}\n\n"
+        f"📊  Risk Score     :  {score} / 100\n\n"
+        f"🏷️   Classification :  {label}",
+        tag,
     )
 
-    # Update the StringVar — this automatically updates the Label on screen
-    result_var.set(report)
 
-    # Change the text colour of the result Label to reflect the risk level
-    result_lbl.config(fg=color)
-
-
-# =============================================================================
-# FUNCTION: build_gui
-# =============================================================================
-# Purpose:
-#   Creates and configures the entire main window and all its widgets.
-#   All layout decisions (geometry, fonts, colours, padding) live here.
-#   After building everything, it hands control to tkinter's event loop.
-# =============================================================================
-def build_gui():
-
-    # -----------------------------------------------------------------------
-    # ROOT WINDOW
-    # tk.Tk() creates the main application window
-    # -----------------------------------------------------------------------
-    root = tk.Tk()
-
-    # Set the text that appears in the title bar of the window
-    root.title("Threat Intelligence Dashboard")
-
-    # Set the initial size of the window: 520 pixels wide × 420 pixels tall
-    root.geometry("520x420")
-
-    # Prevent the user from resizing the window (keeps layout tidy)
-    root.resizable(False, False)
-
-    # Background colour for the whole window — a very dark navy/charcoal
-    root.configure(bg="#1a1a2e")
-
-    # -----------------------------------------------------------------------
-    # TITLE LABEL
-    # Displayed at the very top of the window as a big, bold heading
-    # -----------------------------------------------------------------------
-    title_label = tk.Label(
-        root,                                # Parent widget: the root window
-        text="🛡️  Threat Intelligence Dashboard",
-        font=("Arial", 16, "bold"),          # Large, bold Arial font
-        fg="#e0e0e0",                        # Light grey text
-        bg="#1a1a2e",                        # Match window background
-        pady=10                              # Vertical padding inside the label
+def clear_all(ip_entry: tk.Entry, result_text: tk.Text) -> None:
+    ip_entry.delete(0, tk.END)
+    write_result(
+        result_text,
+        "No analysis yet.\n"
+        "Enter an IP address above and press  Analyze  or  ⏎ Enter.",
+        "muted",
     )
-    # pack() places the widget and makes it fill the full width horizontally
-    title_label.pack(fill="x", padx=20, pady=(20, 5))
-
-    # -----------------------------------------------------------------------
-    # SUBTITLE / INSTRUCTION LABEL
-    # A smaller label beneath the title to guide the user
-    # -----------------------------------------------------------------------
-    subtitle_label = tk.Label(
-        root,
-        text="Enter an IP address to check for known threats",
-        font=("Arial", 10, "italic"),
-        fg="#a0a0b0",                        # Muted light-purple/grey
-        bg="#1a1a2e"
-    )
-    subtitle_label.pack(pady=(0, 15))
-
-    # -----------------------------------------------------------------------
-    # INPUT FRAME
-    # A Frame acts as a container to keep the Entry and Button side by side
-    # and properly spaced
-    # -----------------------------------------------------------------------
-    input_frame = tk.Frame(root, bg="#1a1a2e")
-    input_frame.pack(padx=20, pady=(0, 10))
-
-    # Label just to the left of the text box
-    ip_label = tk.Label(
-        input_frame,
-        text="IP Address:",
-        font=("Arial", 11),
-        fg="#e0e0e0",
-        bg="#1a1a2e"
-    )
-    ip_label.grid(row=0, column=0, padx=(0, 8), sticky="w")
-
-    # Entry widget where the user types the IP address
-    ip_entry = tk.Entry(
-        input_frame,
-        font=("Arial", 11),
-        width=22,                            # Number of characters wide
-        bg="#16213e",                        # Dark blue input background
-        fg="#e0e0e0",                        # Light text colour
-        insertbackground="#e0e0e0",          # Cursor colour inside the field
-        relief="flat",                       # Flat border style (modern look)
-        bd=4                                 # Border width (acts as padding)
-    )
-    ip_entry.grid(row=0, column=1, padx=(0, 10))
-
-    # Give the Entry focus immediately so the user can type right away
     ip_entry.focus()
 
-    # -----------------------------------------------------------------------
-    # ANALYZE BUTTON
-    # When clicked it calls analyze_ip(), passing the widgets it needs
-    # lambda is used so we can pass arguments to the function
-    # -----------------------------------------------------------------------
-    analyze_btn = tk.Button(
-        input_frame,
-        text="Analyze Threat",
-        font=("Arial", 11, "bold"),
-        bg="#e94560",                        # Eye-catching red/pink accent
-        fg="#ffffff",                        # White text on the button
-        activebackground="#c73652",          # Slightly darker when pressed
-        activeforeground="#ffffff",
+
+def build_gui() -> None:
+
+    root = tk.Tk()
+    root.title("Threat Intelligence Dashboard")
+    root.resizable(False, False)
+    root.configure(bg=BG_ROOT)
+
+    root.update_idletasks()
+    x = (root.winfo_screenwidth()  - WIN_W) // 2
+    y = (root.winfo_screenheight() - WIN_H) // 2
+    root.geometry(f"{WIN_W}x{WIN_H}+{x}+{y}")
+
+    setup_styles()
+
+    header_frame = tk.Frame(root, bg=BG_HEADER)
+    header_frame.pack(fill="x")
+
+    tk.Frame(header_frame, bg=ACCENT_RED, height=3).pack(fill="x")
+
+    tk.Label(
+        header_frame,
+        text="🛡️  Threat Intelligence Dashboard",
+        font=FONT_TITLE,
+        fg=TEXT_PRIMARY,
+        bg=BG_HEADER,
+    ).pack(pady=(14, 3))
+
+    tk.Label(
+        header_frame,
+        text=(
+            "Real-time phishing & malicious IP analysis  •  "
+            "AbuseIPDB & AlienVault OTX"
+        ),
+        font=FONT_SUBTITLE,
+        fg=TEXT_MUTED,
+        bg=BG_HEADER,
+    ).pack(pady=(0, 14))
+
+    tk.Frame(root, bg=BG_SEPARATOR, height=1).pack(fill="x")
+
+    search_frame = tk.Frame(root, bg=BG_ROOT)
+    search_frame.pack(fill="x", padx=32, pady=22)
+
+    tk.Label(
+        search_frame,
+        text="IP Address :",
+        font=FONT_LABEL_B,
+        fg=TEXT_ACCENT,
+        bg=BG_ROOT,
+    ).grid(row=0, column=0, padx=(0, 10), sticky="w")
+
+    ip_entry = tk.Entry(
+        search_frame,
+        font=FONT_ENTRY,
+        width=20,
+        bg=BG_ENTRY,
+        fg=TEXT_PRIMARY,
+        insertbackground=CURSOR_CLR,
         relief="flat",
-        cursor="hand2",                      # Show a hand cursor on hover
-        padx=12,
-        pady=4,
-        command=lambda: analyze_ip(ip_entry, result_var, result_lbl)
+        bd=6,
     )
-    analyze_btn.grid(row=0, column=2)
+    ip_entry.grid(row=0, column=1, padx=(0, 14), ipady=4)
+    ip_entry.focus()
 
-    # -----------------------------------------------------------------------
-    # SEPARATOR LINE
-    # A thin horizontal line to visually separate the input area from results
-    # -----------------------------------------------------------------------
-    separator = tk.Frame(root, bg="#2a2a4a", height=2)
-    separator.pack(fill="x", padx=20, pady=(5, 15))
+    ttk.Button(
+        search_frame,
+        text="Analyze Threat",
+        style="Analyze.TButton",
+        cursor="hand2",
+        command=lambda: analyze_ip(ip_entry, result_text),
+    ).grid(row=0, column=2, padx=(0, 8))
 
-    # -----------------------------------------------------------------------
-    # RESULT AREA HEADER
-    # A small label above the result box to describe what is shown below
-    # -----------------------------------------------------------------------
-    result_header = tk.Label(
-        root,
-        text="Analysis Result",
-        font=("Arial", 11, "bold"),
-        fg="#a0a0b0",
-        bg="#1a1a2e"
-    )
-    result_header.pack(anchor="w", padx=25)
+    ttk.Button(
+        search_frame,
+        text="Clear",
+        style="Clear.TButton",
+        cursor="hand2",
+        command=lambda: clear_all(ip_entry, result_text),
+    ).grid(row=0, column=3)
 
-    # -----------------------------------------------------------------------
-    # RESULT DISPLAY — StringVar + Label
-    #
-    # StringVar is a special tkinter variable that automatically updates the
-    # Label whenever its value changes via result_var.set("new text").
-    # This avoids having to call result_lbl.config(text="...") every time.
-    # -----------------------------------------------------------------------
-    result_var = tk.StringVar()
-    result_var.set("No analysis yet.\nEnter an IP address above and click Analyze.")
+    ip_entry.bind("<Return>", lambda _e: analyze_ip(ip_entry, result_text))
 
-    result_lbl = tk.Label(
-        root,
-        textvariable=result_var,             # Linked to result_var — auto-updates
-        font=("Courier", 12),                # Monospace font for aligned columns
-        fg="#a0a0b0",                        # Default muted grey for placeholder text
-        bg="#16213e",                        # Dark blue background box
-        justify="left",                      # Left-align multi-line text
-        anchor="nw",                         # Anchor content to top-left corner
-        width=46,                            # Fixed width in characters
-        height=7,                            # Fixed height in text lines
+    tk.Frame(root, bg=BG_SEPARATOR, height=1).pack(fill="x", padx=32)
+
+    result_frame = tk.Frame(root, bg=BG_ROOT)
+    result_frame.pack(fill="both", expand=True, padx=32, pady=18)
+
+    tk.Label(
+        result_frame,
+        text="▸  Analysis Result",
+        font=FONT_SECTION,
+        fg=TEXT_ACCENT,
+        bg=BG_ROOT,
+        anchor="w",
+    ).pack(fill="x", pady=(0, 6))
+
+    border_frame = tk.Frame(result_frame, bg=BORDER_RESULT, bd=1, relief="flat")
+    border_frame.pack(fill="both", expand=True)
+
+    text_and_sb_frame = tk.Frame(border_frame, bg=BG_RESULT)
+    text_and_sb_frame.pack(fill="both", expand=True)
+
+    result_text = tk.Text(
+        text_and_sb_frame,
+        font=FONT_RESULT,
+        bg=BG_RESULT,
+        fg=TEXT_MUTED,
+        wrap=tk.WORD,
+        state=tk.DISABLED,
         relief="flat",
         bd=0,
-        padx=15,
-        pady=12
+        padx=18,
+        pady=14,
+        cursor="arrow",
+        insertwidth=0,
+        selectbackground="#2a2a50",
+        selectforeground=TEXT_PRIMARY,
+        inactiveselectbackground="#2a2a50",
     )
-    result_lbl.pack(padx=20, pady=(5, 10))
+    result_text.pack(side="left", fill="both", expand=True)
 
-    # -----------------------------------------------------------------------
-    # FOOTER LABEL
-    # A small credit/info line at the very bottom of the window
-    # -----------------------------------------------------------------------
-    footer_label = tk.Label(
+    configure_tags(result_text)
+
+    scrollbar = ttk.Scrollbar(
+        text_and_sb_frame,
+        orient="vertical",
+        style="Dark.Vertical.TScrollbar",
+        command=result_text.yview,
+    )
+    scrollbar.pack(side="right", fill="y")
+
+    result_text.config(yscrollcommand=scrollbar.set)
+
+    write_result(
+        result_text,
+        "No analysis yet.\n"
+        "Enter an IP address above and press  Analyze  or  ⏎ Enter.",
+        "muted",
+    )
+
+    tk.Label(
         root,
-        text="Phishing & Threat Intelligence Engine  •  UC 00602",
-        font=("Arial", 8),
-        fg="#4a4a6a",                        # Very muted, barely visible
-        bg="#1a1a2e"
-    )
-    footer_label.pack(side="bottom", pady=(0, 10))
+        text="Phishing & Threat Intelligence Engine  •  UC 00602  •  ATEC",
+        font=FONT_FOOTER,
+        fg="#35355a",
+        bg=BG_ROOT,
+    ).pack(side="bottom", pady=(0, 8))
 
-    # -----------------------------------------------------------------------
-    # BIND THE ENTER / RETURN KEY
-    # Pressing Enter in the Entry widget triggers the same action as clicking
-    # the button — a convenience for keyboard users
-    # -----------------------------------------------------------------------
-    ip_entry.bind(
-        "<Return>",
-        lambda event: analyze_ip(ip_entry, result_var, result_lbl)
-    )
-
-    # -----------------------------------------------------------------------
-    # START THE EVENT LOOP
-    # root.mainloop() hands control to tkinter and keeps the window open.
-    # It listens for user interactions (clicks, keypresses) until the window
-    # is closed.
-    # -----------------------------------------------------------------------
     root.mainloop()
 
 
-# =============================================================================
-# ENTRY POINT
-# =============================================================================
-# This block only runs when you execute this file directly:
-#   python gui_app.py
-#
-# It does NOT run when this file is imported by another module.
-# This is a Python best practice to keep modules safe to import.
-# =============================================================================
 if __name__ == "__main__":
     build_gui()
