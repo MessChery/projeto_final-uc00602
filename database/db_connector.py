@@ -14,7 +14,7 @@ def create_connection():
         connection = mysql.connector.connect(
             host=os.getenv('HOST'),
             database=os.getenv('DATABASE'),
-            user=os.getenv('USER'),
+            user=os.getenv('DB_USER'),
             password=os.getenv('DB_PASSWORD'),
             port=os.getenv('PORT')
         )
