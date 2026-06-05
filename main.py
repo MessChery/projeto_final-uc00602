@@ -1,11 +1,9 @@
-
 import sys
 import argparse
 from urllib.parse import urlparse
-
 from api_ingestion import fetch_abuseipdb, fetch_otx
-
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "database"))
 from database.db_queries import process_ioc
 
@@ -18,17 +16,6 @@ SEVERITY_OTX       = 7.0
 
 
 def _classify_indicator(value: str) -> str:
-    """
-    Returns the indicator_type string expected by process_ioc().
-
-    Logic:
-      - If urlparse reports it as an IP (no dots that look like a TLD, or
-        it already came from an IPv4/IPv6 field), classify as "IPv4".
-      - Everything else is treated as "domain".
-
-    This is a lightweight heuristic that avoids pulling in the `ipaddress`
-    stdlib module — it is intentionally simple.
-    """
     import socket
     try:
         socket.inet_aton(value)
@@ -45,7 +32,7 @@ def _classify_indicator(value: str) -> str:
 def update_database():
 
     print("=" * 60)
-    print("  Phishing & Threat Intelligence Engine — DB Update")
+    print("Phishing & Threat Intelligence Engine — DB Update")
     print("=" * 60)
 
     total_success  = 0
@@ -58,12 +45,12 @@ def update_database():
     try:
         abuseipdb_ips = fetch_abuseipdb()
         print(
-            f"      Fetched {len(abuseipdb_ips)} IP(s) from AbuseIPDB. "
-            f"Injecting into database..."
+            f"Fetched {len(abuseipdb_ips)} IPs from AbuseIPDB. "
+            f"Injecting into database"
         )
     except Exception as error:
-        print(f"      [WARNING] Could not fetch AbuseIPDB data: {error}")
-        print("      Skipping AbuseIPDB — continuing with other sources.")
+        print(f"Could not fetch AbuseIPDB data: {error}")
+        print("Skipping AbuseIPDB — continuing with other sources.")
 
     for ip in abuseipdb_ips:
 
@@ -88,7 +75,7 @@ def update_database():
 
     if abuseipdb_ips:
         print(
-            f"      AbuseIPDB done. "
+            f"AbuseIPDB done. "
             f"{total_success} inserted/updated, "
             f"{total_failures} failed."
         )
@@ -103,12 +90,12 @@ def update_database():
     try:
         otx_indicators = fetch_otx()
         print(
-            f"      Fetched {len(otx_indicators)} indicator(s) from AlienVault OTX. "
-            f"Injecting into database..."
+            f"Fetched {len(otx_indicators)} indicator(s) from AlienVault OTX. "
+            f"Injecting into database"
         )
     except Exception as error:
-        print(f"      [WARNING] Could not fetch AlienVault OTX data: {error}")
-        print("      Skipping AlienVault OTX — continuing with other sources.")
+        print(f"Could not fetch AlienVault OTX data: {error}")
+        print("Skipping AlienVault OTX — continuing with other sources.")
 
     for indicator in otx_indicators:
 
@@ -135,15 +122,15 @@ def update_database():
         otx_success  = total_success  - success_before_otx
         otx_failures = total_failures - failures_before_otx
         print(
-            f"      AlienVault OTX done. "
+            f"AlienVault OTX done. "
             f"{otx_success} inserted/updated, "
             f"{otx_failures} failed."
         )
 
     print("\n" + "=" * 60)
-    print("  Update complete.")
-    print(f"  Total indicators inserted/updated : {total_success}")
-    print(f"  Total failures                    : {total_failures}")
+    print("Update complete.")
+    print(f"Total indicators inserted/updated: {total_success}")
+    print(f"Total failures: {total_failures}")
     print("=" * 60 + "\n")
 
 

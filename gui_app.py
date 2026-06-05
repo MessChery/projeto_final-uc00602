@@ -74,17 +74,10 @@ _IPV4_RE = re.compile(
 
 
 def is_valid_ipv4(text: str) -> bool:
-    """Return True only if *text* is a syntactically valid IPv4 address."""
     return bool(_IPV4_RE.match(text))
 
 
 def resolve_hostname(ip: str) -> str:
-    """
-    Attempt a reverse DNS (PTR) lookup via socket.gethostbyaddr().
-    Returns the hostname on success, or "N/A (No PTR record)" on any failure.
-    Catching socket.herror and socket.gaierror covers the vast majority of
-    DNS failures (no record, network error, timeout).
-    """
     try:
         hostname, _, _ = socket.gethostbyaddr(ip)
         return hostname
