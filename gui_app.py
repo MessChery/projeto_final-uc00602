@@ -376,7 +376,7 @@ def build_gui() -> None:
 
     tk.Label(
         root,
-        text="Phishing & Threat Intelligence Engine  •  UC 00602  •  ATEC",
+        text="Phishing & Threat Intelligence Engine  •  UC 00602  •  ATEC •  Beatriz Rodrigues e Hugo Braz",
         font=FONT_FOOTER,
         fg="#35355a",
         bg=BG_ROOT,
