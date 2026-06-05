@@ -7,7 +7,7 @@ def process_ioc(indicator_value, indicator_type, source_id, severity_score):
     connection = create_connection()
 
     if connection is None:
-        print("ERROR: Could not connect to the database in process_ioc().")
+        print("Could not connect to the database in process_ioc().")
         return False
 
     cursor = connection.cursor()
@@ -28,7 +28,7 @@ def process_ioc(indicator_value, indicator_type, source_id, severity_score):
         result_row = cursor.fetchone()
 
         if result_row is None:
-            print(f"ERROR: Could not retrieve indicator ID for '{indicator_value}'.")
+            print(f"Could not retrieve indicator ID for '{indicator_value}'.")
             connection.rollback()
             return False
 
@@ -45,11 +45,11 @@ def process_ioc(indicator_value, indicator_type, source_id, severity_score):
 
         connection.commit()
 
-        print(f"SUCCESS: Indicator '{indicator_value}' processed. Sighting saved/updated.")
+        print(f"Indicator '{indicator_value}' processed. Sighting saved/updated.")
         return True
 
     except Exception as error:
-        print(f"ERROR in process_ioc(): {error}")
+        print(f"erro in process_ioc(): {error}")
         connection.rollback()
         return False
 
@@ -63,7 +63,7 @@ def get_threat_history(ip):
     connection = create_connection()
 
     if connection is None:
-        print("ERROR: Could not connect to the database in get_threat_history().")
+        print("Could not connect to the database in get_threat_history().")
         return []
 
     cursor = connection.cursor(dictionary=True)
@@ -88,14 +88,14 @@ def get_threat_history(ip):
         rows = cursor.fetchall()
 
         if len(rows) == 0:
-            print(f"INFO: No threat history found for IP '{ip}'.")
+            print(f"No threat history found for IP '{ip}'.")
         else:
-            print(f"INFO: Found {len(rows)} sighting record(s) for IP '{ip}'.")
+            print(f"Found {len(rows)} sighting record(s) for IP '{ip}'.")
 
         return rows
 
     except Exception as error:
-        print(f"ERROR in get_threat_history(): {error}")
+        print(f"Error in get_threat_history(): {error}")
         connection.rollback()
         return []
 

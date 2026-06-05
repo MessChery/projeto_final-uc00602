@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 def calculate_risk(threat_history):
 
     if threat_history is None or len(threat_history) == 0:
-        print("RISK ENGINE: No threat history provided. Risk score = 0.")
+        print("No threat history provided. Risk score = 0.")
         return 0
 
 
@@ -23,7 +23,7 @@ def calculate_risk(threat_history):
     severity_points = (highest_severity / 10.0) * 40
     severity_points = round(severity_points, 2)
 
-    print(f"RISK ENGINE: Highest severity found = {highest_severity} → {severity_points} severity points.")
+    print(f"Highest severity found = {highest_severity} → {severity_points} severity points.")
 
 
     all_last_seen_dates = []
@@ -59,9 +59,9 @@ def calculate_risk(threat_history):
         else:
             recency_points = 0
 
-        print(f"RISK ENGINE: Last seen {days_ago} day(s) ago → {recency_points} recency points.")
+        print(f"Last seen {days_ago} day(s) ago → {recency_points} recency points.")
     else:
-        print("RISK ENGINE: No valid last_seen date found → 0 recency points.")
+        print("No valid last_seen date found → 0 recency points.")
 
 
     unique_sources = set()
@@ -77,7 +77,7 @@ def calculate_risk(threat_history):
     else:
         source_points = number_of_sources * 5
 
-    print(f"RISK ENGINE: {number_of_sources} unique source(s) → {source_points} source points.")
+    print(f"{number_of_sources} unique source(s) → {source_points} source points.")
 
 
     total_times_seen = 0
@@ -97,13 +97,13 @@ def calculate_risk(threat_history):
     else:
         frequency_points = 0
 
-    print(f"RISK ENGINE: Total sightings = {total_times_seen} → {frequency_points} frequency points.")
+    print(f"Total sightings = {total_times_seen} → {frequency_points} frequency points.")
 
 
     total_risk_score = severity_points + recency_points + source_points + frequency_points
     total_risk_score = int(min(total_risk_score, 100))
 
-    print(f"RISK ENGINE: Final risk score = {total_risk_score} / 100")
+    print(f"Final risk score = {total_risk_score} / 100")
 
     return total_risk_score
 
